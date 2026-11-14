@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Text Pattern Search – RE and DFA</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<style>
+:root{--bg:#eef2f6;--card:#fff;--ink:#14213d;--mute:#5b6b82;--line:#cfd8e3;--acc:#1d4ed8;--hl:#ffe27a}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1724;--card:#17223a;--ink:#e7edf7;--mute:#9db0cb;--line:#2b3b5a;--acc:#7aa2ff;--hl:#7a5f00}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 Georgia,"Times New Roman",serif}
+main{max-width:1000px;margin:0 auto;padding:28px 18px 60px}
+h1{font-size:1.7rem;margin:0 0 4px}p.sub{margin:0 0 22px;color:var(--mute)}
+section{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:16px 18px;margin-bottom:16px}
+h2{font-size:1.05rem;margin:0 0 10px}label{font-weight:bold}
+textarea{width:100%;height:190px;font:14px/1.5 Consolas,"Courier New",monospace;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:4px;padding:8px}
+select,button,input[type=file]{font:inherit;padding:7px 10px;border:1px solid var(--line);border-radius:4px;background:var(--card);color:var(--ink)}
+button.run{background:var(--acc);color:#fff;border-color:var(--acc);font-weight:bold;cursor:pointer}
+button:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--acc);outline-offset:1px}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:10px}
+code{font:13px Consolas,"Courier New",monospace;background:var(--bg);padding:2px 5px;border-radius:3px;word-break:break-all}
+#view{white-space:pre-wrap;font:14px/1.6 Consolas,"Courier New",monospace;max-height:300px;overflow:auto;background:var(--bg);padding:10px;border-radius:4px}
+mark{background:var(--hl);color:inherit;padding:0 1px;border-radius:2px}
+.wrap{overflow-x:auto;max-height:340px;overflow-y:auto}
+table{border-collapse:collapse;width:100%;font-size:.92rem}th,td{border:1px solid var(--line);padding:4px 8px;text-align:left}
+th{background:var(--bg);position:sticky;top:0}td.n,th.n{text-align:right}
+.stat{font-size:1.05rem}.ok{color:#15803d;font-weight:bold}.note{color:var(--mute);font-size:.92rem}
+</style></head><body><main>
+<h1>Text Pattern Search</h1>
+<p class="sub">Search a document with Regular Expressions (RE) or a hand-coded DFA (TOC Case Study, SET-A).</p>
+
+<section><h2>1. Document</h2>
+<div class="row"><label for="file">Upload .docx or .txt</label><input id="file" type="file" accept=".docx,.txt">
+<span class="note" id="fname">Sample document loaded</span></div>
+<textarea id="text" aria-label="Document text"></textarea></section>
+
+<section><h2>2. Pattern</h2>
+<div class="row"><label for="pat">Pattern</label><select id="pat"></select>
+<label for="eng">Method</label><select id="eng"><option value="re">Regular Expression</option><option value="dfa">DFA (words ending with ‘ing’ only)</option></select>
+<button class="run" id="go">Search</button></div>
+<div>RE: <code id="rx"></code></div></section>
+
+<section id="res" hidden><h2>3. Result</h2>
+<div class="stat" id="count"></div><div class="note" id="cmp"></div>
+<h2 style="margin-top:14px">Highlighted text</h2><div id="view"></div>
+<h2 style="margin-top:14px">Positions</h2><div class="wrap"><table id="tbl"></table></div></section>
+
+<section id="dfa" hidden><h2>DFA transition table (words ending with ‘ing’)</h2>
+<table><thead><tr><th>State</th><th>i</th><th>n</th><th>g</th><th>other</th></tr></thead><tbody id="dt"></tbody></table>
+<p class="note">→ start state, * accepting state. A word is accepted if the DFA is in q3 when the word ends.</p></section>
+
+<script>
+const SAMPLE = "Computing and Communication in Modern Publishing\nWelcome to Bright Pages Publishing House, Bengaluru. Our company is committed to creating, editing and distributing books and digital documents for learners across India. Computing has changed the way a publisher works: manuscripts are now stored, processed and shared electronically, and every editor depends on reliable software for searching, sorting and checking text.\nComputation plays a central role in a modern editorial office. Complete manuscripts are compared automatically, and communication between authors, reviewers and designers is managed through shared platforms. Companies that adopt these communication tools report faster publishing and fewer completed drafts being lost. A compact computer program is often enough for common tasks such as finding repeated words, checking spellings and counting chapters.\nLearning to search text is an essential skill for every editor. Searching, matching and filtering are now routine. Readers expect fast recommendations, and students are encouraging each other to share notes online. Processing a large collection of documents requires careful planning, and testing every program before releasing it is part of good engineering. Teachers are training new staff, and interns are reading, writing and editing every day.\nThe information stored in a publishing database includes titles, authors, prices and contact details. The registration section receives applications daily; the production section handles composition and printing. Each publication passes through preparation, evaluation and distribution. Without proper documentation and notation, the collection would soon become confusing. The compilation of an index is a tedious operation, so an automated solution is a valuable addition.\nEditorial queries should be sent to editor@brightpages.in or to support.desk@brightpages.co.in. For subscriptions, please write to subscribe@brightpages.com. Authors from universities can reach our acquisitions team at acquisitions@pub-house.org, and student interns may contact intern_help@brightpages.edu.in with questions. Please do not use the incomplete addresses admin@brightpages or info@.com, which are not valid.\nOur helpdesk can be reached on 9876543210 on weekdays. The sales office number is 8123456789 and the warehouse in Mysuru answers on 7012345678. The print division may be contacted on 6001234567, while the accounts department uses 9988776655. Please note that 5123456789 and 98765 are not valid mobile numbers, and neither is 12345.\nPrediction of demand is done by the Planning team in Pune and Chennai. Preprocessing of sales data is completed every Monday, and preparing the preview copies is finished before Friday. Pre-orders are tracked by Rahul and Ananya, who also present the premium titles in India and Mumbai. A prestigious prize, the Kuvempu Award, was presented to Shreya Rao in Delhi.\nThe final printing of the anthology was completed on schedule, and all the pages were checked, packed and delivered. The editors reviewed, revised and approved the proofs; the designers finished the covers and the authors signed the contracts. Several chapters were rejected, edited and resubmitted, and the updated version was accepted after it was processed.\nTraining sessions are held every quarter. Programming, debugging, marketing and publishing are covered, and Running a small press is also discussed. Kingdom of Words, a bestselling title, is now available online; singing, ringing and string handling are explained in the technical appendix. Real-time processing and the use of timing signals are described in the final chapter.\nIn conclusion, a simple text-searching application helps the company to identify specific words, sequences, email addresses and phone numbers in digital documents quickly and accurately. The team is looking forward to improving the system, completing the testing and communicating the results to every department soon.";
+const PATS = {
+ p1:{n:"Words starting with 'com'",re:String.raw`(?<![A-Za-z@.])com[A-Za-z]*(?![A-Za-z])`},
+ p2:{n:"Words ending with 'ing'",re:String.raw`(?<![A-Za-z])[A-Za-z]*ing(?![A-Za-z])`},
+ p3:{n:"Words containing 'tion'",re:String.raw`(?<![A-Za-z])[A-Za-z]*tion[A-Za-z]*(?![A-Za-z])`},
+ p4:{n:"Email addresses",re:String.raw`[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}`},
+ p5:{n:"Phone numbers (10-digit Indian mobile)",re:String.raw`(?<!\d)[6-9]\d{9}(?!\d)`}};
+const TABLE = {0:{i:1,n:0,g:0,o:0},1:{i:1,n:2,g:0,o:0},2:{i:1,n:0,g:3,o:0},3:{i:1,n:0,g:0,o:0}}, ACCEPT=3;
+const $ = id => document.getElementById(id);
+const isLetter = c => (c>="a"&&c<="z")||(c>="A"&&c<="Z");
+
+function reFind(rx, text){ return [...text.matchAll(new RegExp(rx,"gi"))].map(m=>[m[0],m.index,m.index+m[0].length]); }
+function dfaFind(text){
+  const out=[]; let state=0, start=-1; const t=text+"\n";
+  for(let i=0;i<t.length;i++){ const ch=t[i];
+    if(isLetter(ch)){ if(start<0) start=i; const c=ch.toLowerCase(); state=TABLE[state]["ing".includes(c)?c:"o"]; }
+    else { if(start>=0 && state===ACCEPT) out.push([text.slice(start,i),start,i]); start=-1; state=0; } }
+  return out;
+}
+function locate(text,off){ const before=text.slice(0,off); const line=before.split("\n").length; return [line, off-(before.lastIndexOf("\n")+1)+1]; }
+const esc = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+function ms(fn,text){ const t0=performance.now(); for(let k=0;k<100;k++) fn(text); return (performance.now()-t0)/100; }
+
+Object.entries(PATS).forEach(([k,v])=>{ const o=document.createElement("option"); o.value=k; o.textContent=v.n; $("pat").appendChild(o); });
+$("text").value = SAMPLE;
+const showRx=()=>{ $("rx").textContent = PATS[$("pat").value].re; };
+$("pat").onchange=showRx; showRx();
+$("dt").innerHTML = [0,1,2,3].map(s=>{const t=TABLE[s];return `<tr><td>${s==0?"→ ":""}${s==3?"* ":""}q${s}</td><td>q${t.i}</td><td>q${t.n}</td><td>q${t.g}</td><td>q${t.o}</td></tr>`}).join("");
+
+$("file").onchange = async e => {
+  const f=e.target.files[0]; if(!f) return; $("fname").textContent=f.name;
+  try{
+    if(f.name.toLowerCase().endsWith(".docx")){
+      const r=await mammoth.extractRawText({arrayBuffer:await f.arrayBuffer()});
+      $("text").value=r.value.replace(/\n\n/g,"\n");
+    } else $("text").value=await f.text();
+  }catch(err){ $("fname").textContent="Could not read the file. Paste the text instead (the .docx reader needs internet)."; }
+};
+
+$("go").onclick = () => {
+  const text=$("text").value, key=$("pat").value, eng=$("eng").value, p=PATS[key];
+  if(!text.trim()){ alert("Add some text first: upload a file or paste it in the box."); return; }
+  if(eng==="dfa" && key!=="p2"){ alert("The DFA is built for ‘words ending with ing’. Choose that pattern, or use the RE method."); return; }
+  const hits = eng==="dfa" ? dfaFind(text) : reFind(p.re,text);
+  $("res").hidden=false; $("dfa").hidden = eng!=="dfa";
+  $("count").textContent = `${hits.length} occurrence(s) of “${p.n}” using ${eng==="dfa"?"the DFA":"a regular expression"}`;
+  if(key==="p2"){
+    const a=reFind(p.re,text), b=dfaFind(text), same=JSON.stringify(a)===JSON.stringify(b);
+    $("cmp").innerHTML = `RE found ${a.length}, DFA found ${b.length}. Identical results: <span class="ok">${same?"Yes":"No"}</span>. Time per scan: RE ${ms(t=>reFind(p.re,t),text).toFixed(3)} ms, DFA ${ms(dfaFind,text).toFixed(3)} ms.`;
+  } else $("cmp").textContent="";
+  let html="", last=0; hits.forEach(([w,s,e])=>{ html+=esc(text.slice(last,s))+"<mark>"+esc(w)+"</mark>"; last=e; });
+  $("view").innerHTML = html+esc(text.slice(last));
+  $("tbl").innerHTML = "<thead><tr><th class=n>No.</th><th>Match</th><th class=n>Line</th><th class=n>Col</th><th class=n>Start</th><th class=n>End</th></tr></thead><tbody>"+
+    hits.map(([w,s,e],i)=>{const [l,c]=locate(text,s);return `<tr><td class=n>${i+1}</td><td>${esc(w)}</td><td class=n>${l}</td><td class=n>${c}</td><td class=n>${s}</td><td class=n>${e}</td></tr>`}).join("")+"</tbody>";
+};
+</script></main></body></html>
